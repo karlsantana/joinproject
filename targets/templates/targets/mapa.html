@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa de Alvos</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            height: 80vh;
+            margin: 20px;
+            border: 1px solid #ccc;
+        }
+
+        .btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            width: auto;
+            height: auto;
+        }
+
+        .btn:hover {
+            background-color: #0056b3;
+        }
+
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: none;
+            z-index: 1000;
+            border-radius: 10px;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            z-index: 999;
+        }
+
+        .form-group {
+            margin-bottom: 10px;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+        }
+
+        input, button {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .btn-delete {
+            background-color: #dc3545;
+        }
+
+        .btn-delete:hover {
+            background-color: #a71d2a;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mapa de Alvos</h1>
+    <div id="map"></div>
+    <button class="btn" id="add-alvo-btn">Adicionar Novo Alvo</button>
+
+    <div class="modal-overlay" id="modal-overlay"></div>
+    <div class="modal" id="modal-form">
+        <h2 id="modal-title">Adicionar Novo Alvo</h2>
+        <form id="alvo-form">
+            <div class="form-group">
+                <label for="nome">Nome:</label>
+                <input type="text" id="nome" name="nome" required>
+            </div>
+            <div class="form-group">
+                <label for="latitude">Latitude:</label>
+                <input type="number" step="any" id="latitude" name="latitude" required>
+            </div>
+            <div class="form-group">
+                <label for="longitude">Longitude:</label>
+                <input type="number" step="any" id="longitude" name="longitude" required>
+            </div>
+            <div class="form-group">
+                <label for="data_expiracao">Data de Expiração:</label>
+                <input type="date" id="data_expiracao" name="data_expiracao" required>
+            </div>
+            <button type="submit">Salvar</button>
+            <button type="button" id="cancel-btn">Cancelar</button>
+            <button type="button" id="delete-btn" class="btn-delete" style="display: none;">Excluir</button>
+        </form>
+    </div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        const API_URL = '/api/alvos/';
+
+        const map = L.map('map', {
+            scrollWheelZoom: false,
+            minZoom: 3,
+            worldCopyJump: true
+        }).setView([0, 0], 2);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        let markers = {};
+
+        map.invalidateSize();
+        map.scrollWheelZoom.disable();
+        map.on('focus', () => map.scrollWheelZoom.enable());
+        map.on('blur', () => map.scrollWheelZoom.disable());
+
+        async function fetchAlvos() {
+            const response = await fetch(API_URL);
+            const data = await response.json();
+            data.forEach(addMarker);
+        }
+
+        function addMarker(alvo) {
+            if (markers[alvo.id]) return;
+
+            const marker = L.marker([alvo.latitude, alvo.longitude]).addTo(map);
+
+            const popupContent = `<strong>${alvo.nome}</strong><br>Expira em: ${alvo.data_expiracao}`;
+            marker.bindPopup(popupContent);
+
+            marker.on('mouseover', () => marker.openPopup());
+            marker.on('mouseout', () => marker.closePopup());
+            marker.on('click', () => openModal(alvo));
+
+            markers[alvo.id] = marker;
+        }
+
+        async function openModal(alvo = null) {
+            const modal = document.getElementById('modal-form');
+            const overlay = document.getElementById('modal-overlay');
+
+            if (alvo) {
+                try {
+                    const response = await fetch(`${API_URL}${alvo.id}/`);
+                    if (!response.ok) throw new Error();
+
+                    const updatedAlvo = await response.json();
+
+                    document.getElementById('modal-title').innerText = 'Editar Alvo';
+                    document.getElementById('nome').value = updatedAlvo.nome;
+                    document.getElementById('latitude').value = updatedAlvo.latitude;
+                    document.getElementById('longitude').value = updatedAlvo.longitude;
+                    document.getElementById('data_expiracao').value = updatedAlvo.data_expiracao;
+                    document.getElementById('delete-btn').style.display = 'block';
+                    document.getElementById('delete-btn').setAttribute('data-id', updatedAlvo.id);
+                    document.getElementById('alvo-form').setAttribute('data-id', updatedAlvo.id);
+                } catch {
+                    alert('Erro ao carregar os dados do alvo.');
+                    return;
+                }
+            } else {
+                document.getElementById('modal-title').innerText = 'Adicionar Novo Alvo';
+                document.getElementById('alvo-form').reset();
+                document.getElementById('delete-btn').style.display = 'none';
+                document.getElementById('alvo-form').removeAttribute('data-id');
+            }
+
+            modal.style.display = 'block';
+            overlay.style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('modal-form').style.display = 'none';
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        async function saveAlvo(e) {
+            e.preventDefault();
+            const id = document.getElementById('alvo-form').getAttribute('data-id');
+            const nome = document.getElementById('nome').value;
+            const latitude = parseFloat(document.getElementById('latitude').value);
+            const longitude = parseFloat(document.getElementById('longitude').value);
+            const data_expiracao = document.getElementById('data_expiracao').value;
+
+            try {
+                if (latitude < -90 || latitude > 90) throw new Error('Latitude inválida');
+                if (longitude < -180 || longitude > 180) throw new Error('Longitude inválida');
+
+                const alvo = { nome, latitude, longitude, data_expiracao };
+                const method = id ? 'PUT' : 'POST';
+                const url = id ? `${API_URL}${id}/` : API_URL;
+
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(alvo)
+                });
+
+                if (!response.ok) throw new Error('Erro ao salvar o alvo.');
+
+                const data = await response.json();
+                if (method === 'POST') addMarker(data);
+                else {
+                    const marker = markers[id];
+                    marker.setLatLng([data.latitude, data.longitude]);
+                    marker.bindPopup(`<strong>${data.nome}</strong><br>Expira em: ${data.data_expiracao}`);
+                    markers[id] = marker;
+                }
+
+                closeModal();
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function deleteAlvo() {
+            const id = document.getElementById('delete-btn').getAttribute('data-id');
+            await fetch(`${API_URL}${id}/`, { method: 'DELETE' });
+            map.removeLayer(markers[id]);
+            delete markers[id];
+            closeModal();
+        }
+
+        document.getElementById('add-alvo-btn').addEventListener('click', () => openModal());
+        document.getElementById('cancel-btn').addEventListener('click', closeModal);
+        document.getElementById('alvo-form').addEventListener('submit', saveAlvo);
+        document.getElementById('delete-btn').addEventListener('click', deleteAlvo);
+
+        fetchAlvos();
+    </script>
+</body>
+</html>

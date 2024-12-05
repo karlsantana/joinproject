@@ -1,0 +1,38 @@
+services:
+  web:
+    build:
+      context: .
+    container_name: django_app
+    command: >
+      sh -c "
+      python manage.py migrate &&
+      python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      DJANGO_SETTINGS_MODULE: joinproject.settings
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: join
+      POSTGRES_HOST: db  # Substituído "localhost" por "db"
+      POSTGRES_PORT: 5432
+
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: join
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
